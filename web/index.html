@@ -1,7 +1,38 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>数字档案长期保存</title>
 <style>body{font:16px system-ui;max-width:980px;margin:32px auto;padding:0 16px}input,textarea,button,select{font:inherit;padding:8px;margin:4px}textarea{width:100%;height:110px}.panel{border:1px solid #bbb;padding:16px;border-radius:8px;margin:12px 0}pre{background:#f4f4f4;padding:12px;white-space:pre-wrap}</style></head>
 <body><h1>数字档案长期保存</h1><p>演示账号：owner、archivist、auditor、outsider。请求使用 <code>X-User-Id</code>。</p>
-<section class="panel"><select id="user"><option>owner</option><option>archivist</option><option>auditor</option><option>outsider</option></select>
-<button onclick="loadStatus()">查看档案状态</button><pre id="out"></pre></section>
-<p>详细接口见 README。页面用于完成初始化后的状态检查，核心流程由 JSON API 提供。</p>
-<script>const out=document.querySelector("#out"),user=document.querySelector("#user");async function loadStatus(){const id=prompt("档案 ID","1");const r=await fetch(`/api/archives/${id}/status`,{headers:{"X-User-Id":user.value}});out.textContent=JSON.stringify(await r.json(),null,2)}</script></body></html>
+<section class="panel">
+  <select id="user"><option>owner</option><option>archivist</option><option>auditor</option><option>outsider</option></select>
+  <button onclick="loadStatus()">查看档案状态</button><button onclick="loadCustodians()">列出保管机构</button>
+  <pre id="out"></pre>
+</section>
+<section class="panel">
+  <h3>保管机构轮值交接（先核对、后撤旧）</h3>
+  版本ID <input id="vid" size="4" value="1"> 旧副本ID <input id="outcopy" size="4" value="1">
+  新机构 <input id="incust" size="12" value="inst-gamma"> 新副本位置 <input id="inloc" size="14" value="offline-disk-c">
+  <button onclick="registerHandover()">1. 登记轮值</button>
+  交接ID <input id="hid" size="4">
+  <button onclick="verifyHandover(false)">2. 逐份核对</button>
+  <button onclick="verifyHandover(true)">2b. 模拟核对失败</button>
+  <button onclick="completeHandover()">3. 完成交接（旧机构退出）</button>
+  <button onclick="loadHandover()">查看交接</button>
+</section>
+<p>详细接口见 README。核心流程由 JSON API 提供。</p>
+<script>
+const out=document.querySelector("#out"),user=document.querySelector("#user");
+async function call(method,url,body){
+  const r=await fetch(url,{method,headers:{"Content-Type":"application/json","X-User-Id":user.value},body:body?JSON.stringify(body):undefined});
+  return [r.status,await r.json()];
+}
+function show(status,data){out.textContent=`HTTP ${status}\n`+JSON.stringify(data,null,2)}
+async function loadStatus(){const id=prompt("档案 ID","1");show(...await call("GET",`/api/archives/${id}/status`))}
+async function loadCustodians(){show(...await call("GET","/api/custodians"))}
+async function registerHandover(){
+  const [s,d]=await call("POST",`/api/versions/${vid.value}/handovers`,
+    {outgoing_copy_id:Number(outcopy.value),incoming_custodian_id:incust.value,incoming_location:inloc.value});
+  if(d.handover_id)hid.value=d.handover_id;show(s,d);
+}
+async function verifyHandover(bad){show(...await call("POST",`/api/handovers/${hid.value}/verify`,bad?{corrupt_paths:["README.txt"]}:{}))}
+async function completeHandover(){show(...await call("POST",`/api/handovers/${hid.value}/complete`,{}))}
+async function loadHandover(){show(...await call("GET",`/api/handovers/${hid.value}`))}
+</script></body></html>
